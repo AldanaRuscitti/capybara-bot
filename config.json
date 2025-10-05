@@ -1,0 +1,64 @@
+{
+  "accounts": [
+    "Efectivo Pesos",
+    "Efectivo Dólares",
+    "Naranja",
+    "Mercado Pago",
+    "CA $ Galicia",
+    "CA USD Galicia",
+    "Cocos",
+    "Binance",
+    "Bull Market",
+    "Lemon",
+    "UALA"
+  ],
+  "non_adjust_accounts": [
+    "Cocos",
+    "Binance",
+    "Bull Market",
+    "Lemon"
+  ],
+  "categories": {
+    "income": [
+      {"text": "Sueldo", "value": "Sueldo"},
+      {"text": "Inversión", "value": "Inversión"},
+      {"text": "Devolución", "value": "Devolución"},
+      {"text": "Regalo", "value": "Ingreso_Regalo"},
+      {"text": "Otro", "value": "Otro"}
+    ],
+    "expense": [
+      {"text": "Salud", "value": "Salud"},
+      {"text": "Impuesto", "value": "Impuesto"},
+      {"text": "Recital", "value": "Recital"},
+      {"text": "Salida", "value": "Salida"},
+      {"text": "Hogar", "value": "Hogar"},
+      {"text": "Supermercado", "value": "Supermercado"},
+      {"text": "Transporte", "value": "Transporte"},
+      {"text": "Mascota", "value": "Mascota"},
+      {"text": "Donación", "value": "Donación"},
+      {"text": "Auto", "value": "Auto"},
+      {"text": "Estudio", "value": "Estudio"},
+      {"text": "Gimnasio", "value": "Gimnasio"},
+      {"text": "Regalo", "value": "Gasto_Regalo"},
+      {"text": "Banco/Resumen", "value": "Banco/Resumen"},
+      {"text": "Viaje", "value": "Viaje"},
+      {"text": "Otro", "value": "Otro"}
+    ]
+  },
+  "payment_methods": [
+    {"name": "Efectivo Pesos", "account": "Efectivo Pesos"},
+    {"name": "Efectivo Dólares", "account": "Efectivo Dólares"},
+    {"name": "Transferencia MP", "account": "Mercado Pago"},
+    {"name": "Transferencia Naranja", "account": "Naranja"},
+    {"name": "Débito Naranja", "account": "Naranja"},
+    {"name": "Crédito Naranja"},
+    {"name": "Crédito Visa Naranja"},
+    {"name": "Transferencia Galicia", "account": "CA $ Galicia"},
+    {"name": "Débito Galicia", "account": "CA $ Galicia"},
+    {"name": "Crédito Visa Galicia"},
+    {"name": "Crédito Master Galicia"},
+    {"name": "Transferencia USD Galicia", "account": "CA USD Galicia"},
+    {"name": "Transferencia UALA", "account": "UALA"},
+    {"name": "Crédito Visa UALA"}
+  ]
+}
