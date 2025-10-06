@@ -73,19 +73,27 @@ def refresh_config_cache() -> None:
 refresh_config_cache()
 
 
-def make_data_path(filename: str) -> str:
-    return os.path.join(DATA_DIR, filename)
+def get_chat_data_dir(chat_id: int) -> str:
+    path = os.path.join(DATA_DIR, str(chat_id))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
-FINANZAS_FILE = make_data_path('finanzas.csv')
-SALDOS_FILE = make_data_path('saldos.csv')
+def finanzas_path(chat_id: int) -> str:
+    return os.path.join(get_chat_data_dir(chat_id), 'finanzas.csv')
 
 
-def load_finanzas_dataframe() -> pd.DataFrame:
+def saldos_path(chat_id: int) -> str:
+    return os.path.join(get_chat_data_dir(chat_id), 'saldos.csv')
+
+
+def load_finanzas_dataframe(chat_id: int) -> pd.DataFrame:
+    path = finanzas_path(chat_id)
     try:
-        df = pd.read_csv(FINANZAS_FILE)
+        df = pd.read_csv(path)
     except FileNotFoundError:
         columns = [
+            "chat_id",
             "numero_movimiento",
             "movement_type",
             "amount",
@@ -105,11 +113,12 @@ def load_finanzas_dataframe() -> pd.DataFrame:
     return df
 
 
-def load_saldos_dataframe() -> pd.DataFrame:
+def load_saldos_dataframe(chat_id: int) -> pd.DataFrame:
+    path = saldos_path(chat_id)
     try:
-        df = pd.read_csv(SALDOS_FILE)
+        df = pd.read_csv(path)
     except FileNotFoundError:
-        return pd.DataFrame(columns=["cuenta", "saldo", "fecha_actualizacion"])
+        return pd.DataFrame(columns=["chat_id", "cuenta", "saldo", "fecha_actualizacion"])
 
     if not df.empty:
         df['saldo'] = pd.to_numeric(df['saldo'], errors='coerce')
@@ -721,7 +730,7 @@ async def comment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data['comment'] = ""  # Comentario vacío si el usuario dijo "No"
 
         # Guardar la información en un CSV
-        guardar_datos(context.user_data.copy())
+        guardar_datos(update.effective_chat.id, context.user_data.copy())
         await update.message.reply_text(
             build_movement_confirmation(context.user_data),
             parse_mode='Markdown'
@@ -745,7 +754,7 @@ async def handle_comment_text(update: Update, context: ContextTypes.DEFAULT_TYPE
         logging.info("Comentario de %s: %s", user.first_name, update.message.text)
         
         # Guardar la información en un CSV
-        guardar_datos(context.user_data.copy())
+        guardar_datos(update.effective_chat.id, context.user_data.copy())
         await update.message.reply_text(
             build_movement_confirmation(context.user_data),
             parse_mode='Markdown'
@@ -776,8 +785,9 @@ async def update_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return UPDATE_AMOUNT
 
 async def consult_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    chat_id = update.effective_chat.id
     account = update.message.text
-    saldo = obtener_saldo(account)
+    saldo = obtener_saldo(chat_id, account)
     if isinstance(saldo, str):
         await update.message.reply_text(saldo)
     else:
@@ -794,6 +804,7 @@ async def consult_account(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # Función para actualizar el saldo con el nuevo monto
 async def update_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    chat_id = update.effective_chat.id
     account = context.user_data['account']
     raw_amount = update.message.text.replace(',', '.')
     try:
@@ -804,7 +815,7 @@ async def update_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         return UPDATE_AMOUNT
 
-    actualizar_saldo(account, new_amount)
+    actualizar_saldo(chat_id, account, new_amount)
     await update.message.reply_text(
         f"✅ Saldo actualizado en *{account}*: {format_account_balance(account, new_amount)}",
         parse_mode='Markdown'
@@ -824,7 +835,7 @@ async def consultar_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     logging.info("Consulta de saldo por %s: %s", user.first_name, cuenta)
     
     # Obtener saldo de la cuenta
-    saldo = obtener_saldo(cuenta)
+    saldo = obtener_saldo(update.effective_chat.id, cuenta)
     
     # Devolver el saldo al usuario
     if isinstance(saldo, str):
@@ -843,42 +854,39 @@ async def consultar_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ACTION_TYPE
 
 # Función para obtener el saldo de la cuenta desde saldos.csv
-def obtener_saldo(cuenta):
-    try:
-        df_saldos = pd.read_csv("saldos.csv")
-        if cuenta in df_saldos["cuenta"].values:
-            saldo = df_saldos.loc[df_saldos["cuenta"] == cuenta, "saldo"].values[0]
-            return saldo
-        else:
-            return "Cuenta no encontrada"
-    except FileNotFoundError:
-        return "Archivo de saldos no encontrado"
+def obtener_saldo(chat_id: int, cuenta):
+    df_saldos = load_saldos_dataframe(chat_id)
+    if cuenta in df_saldos["cuenta"].values:
+        saldo = df_saldos.loc[df_saldos["cuenta"] == cuenta, "saldo"].values[0]
+        return saldo
+    return "Cuenta no encontrada"
 
 # Función para guardar datos en un CSV
-def guardar_datos(data):
-    try:
-        df = pd.read_csv("finanzas.csv")
-    except FileNotFoundError:
-        df = pd.DataFrame(columns=["numero_movimiento", "movement_type", "amount", "currency", "description", "payment_method", "comment", "fecha"])
+def guardar_datos(chat_id: int, data: Dict[str, Any]):
+    df = load_finanzas_dataframe(chat_id)
 
-    # Crear un DataFrame temporal con los nuevos datos
     new_data = pd.DataFrame([data])
-
-    # Asignar número de movimiento (número de fila)
     new_data["numero_movimiento"] = len(df) + 1
-    
-    # Asignar fecha actual
     new_data["fecha"] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    new_data["chat_id"] = chat_id
 
-    # Reordenar las columnas para tener "numero_movimiento" al principio y "fecha" al final
-    new_data = new_data[["numero_movimiento", "movement_type", "amount", "currency", "description", "payment_method", "comment", "fecha"]]
+    columns = [
+        "chat_id",
+        "numero_movimiento",
+        "movement_type",
+        "amount",
+        "currency",
+        "description",
+        "payment_method",
+        "comment",
+        "fecha",
+    ]
+    new_data = new_data[columns]
 
-    # Concatenar el DataFrame temporal con el DataFrame existente
     df = pd.concat([df, new_data], ignore_index=True)
-    df.to_csv("finanzas.csv", index=False)
+    df.to_csv(finanzas_path(chat_id), index=False)
 
-    # Actualizar el saldo en función del tipo de movimiento y el método de pago
-    actualizar_saldo_por_movimiento(data)
+    actualizar_saldo_por_movimiento(chat_id, data)
 
 
 def limpiar_datos_movimiento(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -896,7 +904,7 @@ def limpiar_datos_movimiento(context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data.pop(key, None)
 
 # Función para actualizar el saldo basado en el movimiento registrado
-def actualizar_saldo_por_movimiento(data):
+def actualizar_saldo_por_movimiento(chat_id: int, data: Dict[str, Any]):
     metodo = data.get('payment_method')
     cuenta, ajustar = resolve_payment_method(metodo)
 
@@ -906,16 +914,13 @@ def actualizar_saldo_por_movimiento(data):
             if data['movement_type'] == '🚨 Gasto':
                 monto = -monto
 
-            actualizar_saldo(cuenta, monto, modificar=True)
+            actualizar_saldo(chat_id, cuenta, monto, modificar=True)
         except (TypeError, ValueError):
             logging.error('Error al convertir el monto del movimiento para actualizar saldo')
 
 # Modificar la función de actualizar saldo para sumar o restar
-def actualizar_saldo(cuenta, monto, modificar=False):
-    try:
-        df_saldos = pd.read_csv("saldos.csv")
-    except FileNotFoundError:
-        df_saldos = pd.DataFrame(columns=["cuenta", "saldo", "fecha_actualizacion"])
+def actualizar_saldo(chat_id: int, cuenta, monto, modificar=False):
+    df_saldos = load_saldos_dataframe(chat_id)
 
     try:
         monto = float(monto)
@@ -925,25 +930,25 @@ def actualizar_saldo(cuenta, monto, modificar=False):
     if not df_saldos.empty:
         df_saldos["saldo"] = pd.to_numeric(df_saldos["saldo"], errors="coerce").fillna(0.0)
 
-    # Obtener la fecha actual
     fecha_actualizacion = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Actualizar el saldo de la cuenta especificada y agregar la fecha de actualización
     if cuenta in df_saldos["cuenta"].values:
         if modificar:
-            # Si es un ajuste (suma o resta), se modifica el saldo actual
             saldo_actual = df_saldos.loc[df_saldos["cuenta"] == cuenta, "saldo"].values[0]
             nuevo_saldo = float(saldo_actual) + monto
             df_saldos.loc[df_saldos["cuenta"] == cuenta, ["saldo", "fecha_actualizacion"]] = [nuevo_saldo, fecha_actualizacion]
         else:
-            # Si es una actualización directa de monto (ej. actualizar saldo manualmente)
             df_saldos.loc[df_saldos["cuenta"] == cuenta, ["saldo", "fecha_actualizacion"]] = [monto, fecha_actualizacion]
     else:
-        # Si la cuenta no existe, la agrega
-        new_row = pd.DataFrame([[cuenta, monto, fecha_actualizacion]], columns=["cuenta", "saldo", "fecha_actualizacion"])
+        new_row = pd.DataFrame([[chat_id, cuenta, monto, fecha_actualizacion]], columns=["chat_id", "cuenta", "saldo", "fecha_actualizacion"])
         df_saldos = pd.concat([df_saldos, new_row], ignore_index=True)
 
-    df_saldos.to_csv("saldos.csv", index=False)
+    if "chat_id" not in df_saldos.columns:
+        df_saldos.insert(0, "chat_id", chat_id)
+    else:
+        df_saldos.loc[:, "chat_id"] = chat_id
+
+    df_saldos.to_csv(saldos_path(chat_id), index=False)
 
 
 async def add_account_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1108,7 +1113,7 @@ async def ultimos_handle_choice(update: Update, context: ContextTypes.DEFAULT_TY
     origin = context.user_data.get('ultimos_origin', 'command')
 
     if choice == 'ULTIMOS_RECENT':
-        df = load_finanzas_dataframe().sort_values(by='fecha', ascending=False)
+        df = load_finanzas_dataframe(query.message.chat_id).sort_values(by='fecha', ascending=False)
         message = build_movements_message(df, limit=10)
         await query.message.reply_text(message)
         context.user_data.pop('ultimos_origin', None)
@@ -1142,7 +1147,8 @@ async def ultimos_handle_filter(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
     filters = parse_filter_text(update.message.text)
-    df = load_finanzas_dataframe()
+    chat_id = update.effective_chat.id
+    df = load_finanzas_dataframe(chat_id)
     if df.empty:
         await update.message.reply_text('No tenés movimientos registrados aún.')
         context.user_data.pop('awaiting_last_filter', None)
@@ -1172,8 +1178,9 @@ async def ultimos_handle_filter(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def resumen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    df_finanzas = load_finanzas_dataframe()
-    df_saldos = load_saldos_dataframe()
+    chat_id = update.effective_chat.id
+    df_finanzas = load_finanzas_dataframe(chat_id)
+    df_saldos = load_saldos_dataframe(chat_id)
 
     totals = compute_account_totals(df_saldos)
     month_totals = compute_monthly_totals(df_finanzas)
