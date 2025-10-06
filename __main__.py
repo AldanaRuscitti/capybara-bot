@@ -9,6 +9,11 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKe
 from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, ContextTypes, filters, CallbackQueryHandler
 import pandas as pd
 
+try:
+    import psycopg2
+except ImportError:  # pragma: no cover - optional dependency
+    psycopg2 = None
+
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not TOKEN:
     raise RuntimeError('Missing TELEGRAM_BOT_TOKEN environment variable')
@@ -29,6 +34,56 @@ def load_config(path: str) -> dict:
 
 
 CONFIG = load_config(CONFIG_PATH)
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+DB_ENABLED = bool(DATABASE_URL and psycopg2)
+
+
+def db_connection():
+    if not DB_ENABLED:
+        raise RuntimeError('Database connection requested but DATABASE_URL/psycopg2 not available')
+    return psycopg2.connect(DATABASE_URL)
+
+
+def init_db() -> None:
+    if not DB_ENABLED:
+        return
+    with db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS movements (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    numero_movimiento INTEGER NOT NULL,
+                    movement_type TEXT,
+                    amount DOUBLE PRECISION,
+                    currency TEXT,
+                    description TEXT,
+                    payment_method TEXT,
+                    comment TEXT,
+                    fecha TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS balances (
+                    chat_id BIGINT NOT NULL,
+                    cuenta TEXT NOT NULL,
+                    saldo DOUBLE PRECISION NOT NULL,
+                    fecha_actualizacion TIMESTAMP NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (chat_id, cuenta)
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_movements_chat_fecha
+                    ON movements (chat_id, fecha DESC);
+                """
+            )
+        conn.commit()
 
 
 def save_config() -> None:
@@ -88,6 +143,15 @@ def saldos_path(chat_id: int) -> str:
 
 
 def load_finanzas_dataframe(chat_id: int) -> pd.DataFrame:
+    if DB_ENABLED:
+        with db_connection() as conn:
+            query = (
+                "SELECT chat_id, numero_movimiento, movement_type, amount, currency, "
+                "description, payment_method, comment, fecha "
+                "FROM movements WHERE chat_id = %s ORDER BY fecha DESC"
+            )
+            df = pd.read_sql_query(query, conn, params=(chat_id,))
+            return df
     path = finanzas_path(chat_id)
     try:
         df = pd.read_csv(path)
@@ -114,6 +178,13 @@ def load_finanzas_dataframe(chat_id: int) -> pd.DataFrame:
 
 
 def load_saldos_dataframe(chat_id: int) -> pd.DataFrame:
+    if DB_ENABLED:
+        with db_connection() as conn:
+            query = (
+                "SELECT chat_id, cuenta, saldo, fecha_actualizacion "
+                "FROM balances WHERE chat_id = %s"
+            )
+            return pd.read_sql_query(query, conn, params=(chat_id,))
     path = saldos_path(chat_id)
     try:
         df = pd.read_csv(path)
@@ -863,6 +934,50 @@ def obtener_saldo(chat_id: int, cuenta):
 
 # Función para guardar datos en un CSV
 def guardar_datos(chat_id: int, data: Dict[str, Any]):
+    if DB_ENABLED:
+        raw_amount = str(data.get('amount', '0')).replace(',', '.').strip()
+        try:
+            amount_value = float(raw_amount)
+        except ValueError:
+            amount_value = 0.0
+
+        with db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(MAX(numero_movimiento), 0) + 1 FROM movements WHERE chat_id = %s",
+                    (chat_id,)
+                )
+                next_number = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    INSERT INTO movements (
+                        chat_id,
+                        numero_movimiento,
+                        movement_type,
+                        amount,
+                        currency,
+                        description,
+                        payment_method,
+                        comment,
+                        fecha
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    """,
+                    (
+                        chat_id,
+                        next_number,
+                        data.get('movement_type'),
+                        amount_value,
+                        data.get('currency'),
+                        data.get('description'),
+                        data.get('payment_method'),
+                        data.get('comment') or None,
+                    ),
+                )
+            conn.commit()
+
+        actualizar_saldo_por_movimiento(chat_id, data)
+        return
+
     df = load_finanzas_dataframe(chat_id)
 
     new_data = pd.DataFrame([data])
@@ -920,12 +1035,43 @@ def actualizar_saldo_por_movimiento(chat_id: int, data: Dict[str, Any]):
 
 # Modificar la función de actualizar saldo para sumar o restar
 def actualizar_saldo(chat_id: int, cuenta, monto, modificar=False):
-    df_saldos = load_saldos_dataframe(chat_id)
-
     try:
         monto = float(monto)
     except (TypeError, ValueError):
         raise ValueError("Monto inválido para la actualización de saldo")
+
+    if DB_ENABLED:
+        with db_connection() as conn:
+            with conn.cursor() as cur:
+                if modificar:
+                    cur.execute(
+                        """
+                        UPDATE balances
+                           SET saldo = saldo + %s,
+                               fecha_actualizacion = NOW()
+                         WHERE chat_id = %s AND cuenta = %s
+                        """,
+                        (monto, chat_id, cuenta),
+                    )
+                    if cur.rowcount == 0:
+                        cur.execute(
+                            "INSERT INTO balances (chat_id, cuenta, saldo, fecha_actualizacion) VALUES (%s, %s, %s, NOW())",
+                            (chat_id, cuenta, monto),
+                        )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO balances (chat_id, cuenta, saldo, fecha_actualizacion)
+                        VALUES (%s, %s, %s, NOW())
+                        ON CONFLICT (chat_id, cuenta)
+                        DO UPDATE SET saldo = EXCLUDED.saldo, fecha_actualizacion = EXCLUDED.fecha_actualizacion
+                        """,
+                        (chat_id, cuenta, monto),
+                    )
+            conn.commit()
+        return
+
+    df_saldos = load_saldos_dataframe(chat_id)
 
     if not df_saldos.empty:
         df_saldos["saldo"] = pd.to_numeric(df_saldos["saldo"], errors="coerce").fillna(0.0)
@@ -1230,6 +1376,7 @@ async def post_init(application: Application) -> None:
 
 
 def main() -> None:
+    init_db()
     application = Application.builder().token(TOKEN).post_init(post_init).build()
     
     application.add_handler(CommandHandler('help', help_command))
