@@ -1408,6 +1408,8 @@ def main() -> None:
         ULTIMOS_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, ultimos_handle_filter)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
+    allow_reentry=True,
+    per_message=True,
 )
 
     application.add_handler(conv_handler)
@@ -1419,6 +1421,8 @@ def main() -> None:
             ULTIMOS_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, ultimos_handle_filter)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True,
+        per_message=True,
     )
 
     application.add_handler(ultimos_handler)
