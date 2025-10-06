@@ -455,16 +455,16 @@ def build_summary_message(totals: Dict[str, float], month_totals: Dict[str, floa
 
 HELP_MESSAGE = (
     "ℹ️ *Centro de ayuda Capy*\n\n"
-    "Capybara te acompaña a registrar movimientos, controlar saldos y revisar tus finanzas sin salir de Telegram.\n\n"
+    "Capybara te ayuda a registrar movimientos, controlar saldos y revisar tus finanzas sin salir de Telegram.\n\n"
     "*Comandos esenciales*\n"
-    "• /start o /menu — mostrar el menú principal\n"
+    "• /inicio — mostrar el menú principal\n"
     "• /ultimos — explorar movimientos recientes con filtros\n"
     "• /resumen — resumen de saldos, ingresos y gastos del mes\n"
     "• /help — volver a esta guía\n\n"
     "*Tips rápidos*\n"
-    "• Guardá un comentario en cada movimiento para buscarlo luego (`comentario=...`).\n"
+    "• Guardá un comentario en cada movimiento para buscarlo después (`comentario=...`).\n"
     "• Personalizá cuentas, categorías y métodos con /add_account, /add_category y /add_payment_method.\n"
-    "• Podés volver al menú en cualquier momento con /menu o el botón 'ℹ️ Ayuda Capy'."
+    "• Volvé al menú cuando quieras con /inicio o el botón 'ℹ️ Ayuda'."
 )
 
 
@@ -619,29 +619,28 @@ logging.basicConfig(
 (ACTION_TYPE, MOVEMENT_TYPE, AMOUNT, CURRENCY, DESCRIPTION, PAYMENT_METHOD, COMMENT, CONTINUE, UPDATE_ACCOUNT, CONSULT_ACCOUNT, UPDATE_AMOUNT, ULTIMOS_CHOICE, ULTIMOS_FILTER) = range(13)
 
 MAIN_MENU_LAYOUT = [
-    ['➕ Registrar Movimiento', '📋 Últimos Movimientos'],
-    ['💰 Ajustar Saldos', '🔍 Consultar Saldos'],
-    ['📊 Resumen Capybara', 'ℹ️ Ayuda Capy']
+    ['➕ Registrar movimiento', '📋 Últimos movimientos'],
+    ['💰 Ajustar saldos', '🔍 Consultar saldos'],
+    ['📊 Resumen Capy', 'ℹ️ Ayuda']
 ]
 
 WELCOME_TEMPLATE = (
-    "🌿 *Capybara Finance*\n"
-    "Hola {first_name}! Soy Capy, tu copiloto financiero.\n\n"
-    "Elegí una opción del menú inferior o probá uno de estos atajos:\n"
+    "🌿 *Capybara Finanzas*\n"
+    "¡Hola {first_name}! Soy Capy, tu copiloto financiero.\n\n"
+    "Elegí una opción del menú o probá estos atajos:\n"
     "• /ultimos — últimos movimientos con filtros inteligentes\n"
     "• /resumen — estado general, ingresos y gastos del mes\n"
-    "• /help — guía completa para sacarle jugo al bot"
+    "• /help — guía completa para aprovechar Capy"
 )
 
 BOT_COMMANDS_CONFIG = [
-    BotCommand('start', 'Mostrar menú principal'),
-    BotCommand('menu', 'Ver el menú Capybara'),
-    BotCommand('ultimos', 'Últimos movimientos y filtros'),
-    BotCommand('resumen', 'Resumen financiero del mes'),
-    BotCommand('help', 'Cómo usar Capybara'),
-    BotCommand('add_account', 'Agregar una nueva cuenta'),
-    BotCommand('add_category', 'Agregar una categoría'),
-    BotCommand('add_payment_method', 'Agregar un método de pago'),
+    BotCommand('inicio', 'Mostrar el menú principal'),
+    BotCommand('movimientos', 'Consultar últimos movimientos'),
+    BotCommand('resumen', 'Ver resumen financiero'),
+    BotCommand('ayuda', 'Ver ayuda y comandos disponibles'),
+    BotCommand('agregar_cuenta', 'Registrar una cuenta'),
+    BotCommand('agregar_categoria', 'Registrar una categoría'),
+    BotCommand('agregar_medio_pago', 'Registrar un medio de pago'),
 ]
 
 
@@ -666,7 +665,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def action_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_choice = update.message.text
 
-    if user_choice in {'➕ Registrar Movimiento', '➕ Agregar Movimiento'}:
+    if user_choice in {'➕ Registrar movimiento', '➕ Registrar Movimiento', '➕ Agregar Movimiento'}:
         context.user_data['action_type'] = 'Agregar Movimiento'
         await update.message.reply_text(
             "¿Qué tipo de movimiento querés registrar?",
@@ -675,7 +674,7 @@ async def action_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return MOVEMENT_TYPE
 
-    elif user_choice in {'💰 Ajustar Saldos', '💰 Actualizar Saldos'}:
+    elif user_choice in {'💰 Ajustar saldos', '💰 Ajustar Saldos', '💰 Actualizar Saldos'}:
         context.user_data['action_type'] = 'Actualizar Saldos'
         await update.message.reply_text(
             "Elegí la cuenta que querés actualizar:",
@@ -691,12 +690,12 @@ async def action_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return CONSULT_ACCOUNT
 
-    elif user_choice == '📋 Últimos Movimientos':
+    elif user_choice in {'📋 Últimos movimientos', '📋 Últimos Movimientos'}:
         context.user_data['ultimos_origin'] = 'menu'
         await update.message.reply_text("Abramos tu historial ✨")
         return await ultimos_start(update, context)
 
-    elif user_choice == '📊 Resumen Capybara':
+    elif user_choice in {'📊 Resumen Capy', '📊 Resumen Capybara'}:
         await resumen_command(update, context)
         await update.message.reply_text(
             "¿Querés hacer otra cosa?",
@@ -704,12 +703,12 @@ async def action_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return ACTION_TYPE
 
-    elif user_choice == 'ℹ️ Ayuda Capy':
+    elif user_choice in {'ℹ️ Ayuda', 'ℹ️ Ayuda Capy'}:
         await help_command(update, context)
         return ACTION_TYPE
 
     await update.message.reply_text(
-        "No reconocí esa opción. Escribí /menu para volver al inicio.",
+        "No reconocí esa opción. Escribí /inicio para volver al menú.",
         reply_markup=make_main_menu_keyboard()
     )
     return ACTION_TYPE
@@ -1265,12 +1264,12 @@ async def ultimos_handle_choice(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data.pop('ultimos_origin', None)
         if origin == 'menu':
             await query.message.reply_text(
-                "Elegí la próxima acción desde el menú 👇",
+                "Elegí la próxima acción en el menú 👇",
                 reply_markup=make_main_menu_keyboard()
             )
             return ACTION_TYPE
         await query.message.reply_text(
-            "Escribí /menu para volver al inicio o usa /ultimos nuevamente.")
+            "Escribí /inicio para volver al menú o usá /movimientos nuevamente.")
         return ConversationHandler.END
 
     if choice == 'ULTIMOS_FILTER':
@@ -1301,7 +1300,7 @@ async def ultimos_handle_filter(update: Update, context: ContextTypes.DEFAULT_TY
         origin = context.user_data.pop('ultimos_origin', 'command')
         if origin == 'menu':
             await update.message.reply_text(
-                "Elegí la próxima acción desde el menú 👇",
+                "Elegí la próxima acción en el menú 👇",
                 reply_markup=make_main_menu_keyboard()
             )
             return ACTION_TYPE
@@ -1314,12 +1313,12 @@ async def ultimos_handle_filter(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.pop('awaiting_last_filter', None)
     if origin == 'menu':
         await update.message.reply_text(
-            "Elegí la próxima acción desde el menú 👇",
+            "Elegí la próxima acción en el menú 👇",
             reply_markup=make_main_menu_keyboard()
         )
         return ACTION_TYPE
 
-    await update.message.reply_text("Escribí /menu para volver al inicio o seguí consultando.")
+    await update.message.reply_text("Escribí /inicio para volver al menú o seguí consultando.")
     return ConversationHandler.END
 
 
@@ -1379,17 +1378,17 @@ def main() -> None:
     init_db()
     application = Application.builder().token(TOKEN).post_init(post_init).build()
     
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(CommandHandler('add_account', add_account_command))
-    application.add_handler(CommandHandler('add_category', add_category_command))
-    application.add_handler(CommandHandler('add_payment_method', add_payment_method_command))
+    application.add_handler(CommandHandler('ayuda', help_command))
+    application.add_handler(CommandHandler('agregar_cuenta', add_account_command))
+    application.add_handler(CommandHandler('agregar_categoria', add_category_command))
+    application.add_handler(CommandHandler('agregar_medio_pago', add_payment_method_command))
     application.add_handler(CommandHandler('resumen', resumen_command))
 
     conv_handler = ConversationHandler(
-    entry_points=[CommandHandler(['start', 'menu'], start)],
+    entry_points=[CommandHandler('inicio', start)],
     states={
         ACTION_TYPE: [MessageHandler(
-            filters.Regex('^(➕ Registrar Movimiento|➕ Agregar Movimiento|📋 Últimos Movimientos|💰 Ajustar Saldos|💰 Actualizar Saldos|🔍 Consultar Saldos|📊 Resumen Capybara|ℹ️ Ayuda Capy)$'),
+            filters.Regex('^(➕ Registrar movimiento|📋 Últimos movimientos|💰 Ajustar saldos|🔍 Consultar saldos|📊 Resumen Capy|ℹ️ Ayuda)$'),
             action_type
         )],
         MOVEMENT_TYPE: [MessageHandler(filters.Regex('^(🤑 Ingreso|🚨 Gasto)$'), movement_type)],
